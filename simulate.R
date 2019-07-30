@@ -74,3 +74,16 @@ m <- stan( file="CSBM2.stan" , data=dat , chains=1 )
 
 precis(m,3)
 
+
+# now without known groups
+
+datu <- list(
+    N_id = N_id,
+    N_groups = N_groups,
+    N_gifts = N_gifts,
+    group = as.integer( ifelse( runif(length(groups))<0.5 , groups , -1 ) ),
+    s = (s),
+    g = (g)
+)
+
+mu <- stan( file="CSBM2u.stan" , data=datu , chains=1 )

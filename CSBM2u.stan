@@ -10,17 +10,17 @@ data{
 parameters{
     matrix[N_groups,N_groups] B;
     real r_mean;
-    real r1;
+    real<lower=0> r1;
     real g_mean;
-    real g1;
+    real<lower=0> g1;
     simplex[N_groups] pg; // vector of base rates of individuals being in each group
 }
 model{
     
     g_mean ~ normal(0,1);
     r_mean ~ normal(0,1);
-    r1 ~ normal(0,1);
-    g1 ~ normal(0,1);
+    r1 ~ normal(1,1);
+    g1 ~ normal(1,1);
 
     // priors for B
     for ( i in 1:N_groups )
@@ -45,17 +45,30 @@ model{
                 // both groups observed
                 if ( group[i]>0 && group[j]>0 ) {
                     vector[2] terms;
+                    int tie;
                     // consider each possible state of true tie and compute prob of data
-                    for ( tie in 0:1 ) {
-                        terms[tie+1] = 
-                            // prob i says i helps j
-                            bernoulli_lpmf( s[i,j,1] | inv_logit( r_mean + r1*tie ) ) + 
-                            // prob i did help j on N_gift occasions
-                            bernoulli_lpmf( g[i,j,] | inv_logit( g_mean + g1*tie ) ) + 
-                            // prob j says i helps j
-                            bernoulli_lpmf( s[j,i,2] | inv_logit( r_mean + r1*tie ) );
-                    }
-                    target += log_mix( inv_logit(B[group[i],group[j]]) , terms[2] , terms[1] );
+                    tie = 0;
+                    terms[1] = 
+                        log1m_inv_logit(B[group[i],group[j]]) + 
+                        // prob i says i helps j
+                        bernoulli_lpmf( s[i,j,1] | inv_logit( r_mean + r1*tie ) ) + 
+                        // prob i did help j on N_gift occasions
+                        bernoulli_lpmf( g[i,j,] | inv_logit( g_mean + g1*tie ) ) + 
+                        // prob j says i helps j
+                        bernoulli_lpmf( s[j,i,2] | inv_logit( r_mean + r1*tie ) );
+                    tie = 1;
+                    terms[2] = 
+                        log_inv_logit(B[group[i],group[j]]) + 
+                        // prob i says i helps j
+                        bernoulli_lpmf( s[i,j,1] | inv_logit( r_mean + r1*tie ) ) + 
+                        // prob i did help j on N_gift occasions
+                        bernoulli_lpmf( g[i,j,] | inv_logit( g_mean + g1*tie ) ) + 
+                        // prob j says i helps j
+                        bernoulli_lpmf( s[j,i,2] | inv_logit( r_mean + r1*tie ) );
+                    target += log_sum_exp( terms );
+                    // now prob of observed groups
+                    group[i] ~ categorical( pg );
+                    group[j] ~ categorical( pg );
                 }//both observed
 
                 // group A observed
@@ -89,6 +102,7 @@ model{
                         k = k + 1;
                     }//gB
                     target += log_sum_exp( terms );
+                    group[i] ~ categorical( pg );
                 }// A observed
 
                 // group B observed
@@ -121,6 +135,7 @@ model{
                         k = k + 1;
                     }//gB
                     target += log_sum_exp( terms );
+                    group[j] ~ categorical( pg );
                 }// B observed
 
                 // neither group observed

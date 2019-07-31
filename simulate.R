@@ -11,12 +11,12 @@ N_id <- 60L
 N_groups <- 3L
 
 # sample ppl into groups
-groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=c(5,1,3) )
+groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=c(4,1,1) )
 
 # define interaction matrix across groups
 B <- diag(N_groups)
 for ( i in 1:length(B) ) if ( B[i]==0 ) B[i] <- 0.05
-for ( i in 1:length(B) ) if ( B[i]==1 ) B[i] <- 0.7
+for ( i in 1:length(B) ) if ( B[i]==1 ) B[i] <- 0.5
 # B[1,2] <- 0.9
 
 # sim ties
@@ -70,10 +70,25 @@ dat <- list(
     g = (g)
 )
 
-m <- stan( file="CSBM2.stan" , data=dat , chains=1 )
+m <- stan( file="CSBM2.stan" , data=dat , chains=3 , cores=3 , iter=600 )
 
-precis(m,3)
+precis(m,2)
 
+tracerplot(m)
+
+# plot true out network
+blank2(w=2)
+par(mfrow=c(1,2))
+
+library(igraph)
+m_graph <- graph_from_adjacency_matrix( s[,,1] , mode="directed" )
+plot(m_graph , vertex.color=groups , main="truth")
+
+# plot posterior inferred network
+post <- extract.samples(m)
+p_tie_out <- round( apply( post$p_tie_out , 2:3 , mean ) )
+m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" )
+plot(m_graph_est , vertex.color=groups , main="posterior mean" )
 
 # now without known groups
 
@@ -81,9 +96,15 @@ datu <- list(
     N_id = N_id,
     N_groups = N_groups,
     N_gifts = N_gifts,
-    group = as.integer( ifelse( runif(length(groups))<0.5 , groups , -1 ) ),
+    group = as.integer( ifelse( runif(length(groups)) < 0 , groups , -1 ) ),
     s = (s),
     g = (g)
 )
+datu$group[1] <- 1 # fix first individual
 
-mu <- stan( file="CSBM2u.stan" , data=datu , chains=1 )
+mu <- stan( file="CSBM2u.stan" , data=datu , iter=1000 , chains=3 , cores=3 , control=list(adapt_delta=0.95) )
+
+precis(mu,3)
+
+tracerplot(mu)
+trankplot(mu)

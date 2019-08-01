@@ -79,20 +79,72 @@ precis(m,3,pars="B")
 
 tracerplot(m)
 
+
+library(igraph)
+
+m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
+
+
+#Get some network descriptives
+#See how long the furthest path is
+diameter(m_graph, directed = TRUE, weights = NA)
+#Get the nodes involved
+get_diameter(m_graph, directed = TRUE, weights = NA)
+#Calculate the mean distance between nodes
+mean_distance(m_graph, directed = TRUE)
+#Get the network density
+edge_density(m_graph)
+#General tendency towards reciprocity
+reciprocity(m_graph)
+#General tendency towards transtivity
+transitivity(m_graph)
+#Range of indegree and outdegree
+range(degree(m_graph, mode="in"))
+range(degree(m_graph, mode="out"))
+# All look pretty plausible
+
 # plot true out network
 blank2(w=2)
 par(mfrow=c(1,2))
 
-library(igraph)
-m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
-plot(m_graph , vertex.color=groups , main="truth")
+#plot(m_graph, vertex.color=groups , main="posterior mean" )
+#Pretty but not sure if super informative 
+plot(m_graph , vertex.color=groups , vertex.size = deg*.4, edge.arrow.size =0.15, 
+     edge.curved = 0.35, vertex.label = NA, seed = 1,
+     main="truth")
+#Decreasing vertex size helps see the direction of ties
+#I included the degree (undirected) in the visualisation
+#All can be easily modified 
 
 # plot posterior inferred network
 post <- extract.samples(m)
 pmean <- apply( post$p_tie_out , 2:3 , mean )
 p_tie_out <- round( pmean )
 m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" , weighted=TRUE )
-plot(m_graph_est , vertex.color=groups , main="posterior mean" )
+
+#Get some network descriptives
+#See how long the furthest path is
+diameter(m_graph_est, directed = TRUE, weights = NA)
+#Get the nodes involved
+get_diameter(m_graph_est, directed = TRUE, weights = NA)
+#Calculate the mean distance between nodes
+mean_distance(m_graph_est, directed = TRUE)
+#Get the network density
+edge_density(m_graph_est)
+#General tendency towards reciprocity
+reciprocity(m_graph_est)
+#General tendency towards transtivity
+transitivity(m_graph_est)
+#Range of indegree and outdegree
+range(degree(m_graph_est, mode="in"))
+range(degree(m_graph_est, mode="out"))
+#Again, all look pretty plausible
+
+#plot(m_graph_est , vertex.color=groups , main="posterior mean" )
+
+# Again, pretty but maybe not the most informative
+plot(m_graph_est ,vertex.color=groups , vertex.size = deg*.3, edge.arrow.size =0.15, 
+     edge.curved = 0.35,  vertex.label = NA,  seed = 1, main="posterior mean" )
 
 # plot edge weights
 w <- as.vector(pmean)

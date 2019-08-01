@@ -11,12 +11,12 @@ N_id <- 60L
 N_groups <- 3L
 
 # sample ppl into groups
-groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=c(4,1,1) )
+groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=c(4,2,1) )
 
 # define interaction matrix across groups
 B <- diag(N_groups)
-for ( i in 1:length(B) ) if ( B[i]==0 ) B[i] <- 0.05
-for ( i in 1:length(B) ) if ( B[i]==1 ) B[i] <- 0.5
+for ( i in 1:length(B) ) if ( B[i]==0 ) B[i] <- 0.01
+for ( i in 1:length(B) ) if ( B[i]==1 ) B[i] <- 0.2
 # B[1,2] <- 0.9
 
 # sim ties
@@ -33,23 +33,25 @@ for ( i in 1:N_id ) {
 
 # sim survey
 # need to define probability of reporting tie, conditional on tie
-r_mean <- (-4) # average log-odds report tie (unconditional)
-r_1 <- 4 # marginal effect on log-odds when tie is real
+r_mean <- (-2) # average log-odds report tie (unconditional)
+r_1 <- 1 # marginal effect on log-odds when tie is real
 
 # make a tensor for survey responses
 # row is focal i and column target j and 3rd index is direction ( i->j or j->i )
-s <- array( NA , dim=c(N_id,N_id,2) )
+s <- array( 0 , dim=c(N_id,N_id,2) )
 
 for ( i in 1:N_id ) {
     for ( j in 1:N_id ) {
-        # sim i->j
-        s[ i , j , 1 ] <- rbern( 1 , inv_logit( r_mean + r_1*y_true[i,j] ) )
-        s[ i , j , 2 ] <- rbern( 1 , inv_logit( r_mean + r_1*y_true[j,i] ) )
+        if ( i != j ) {
+            # sim i->j
+            s[ i , j , 1 ] <- rbern( 1 , inv_logit( r_mean + r_1*y_true[i,j] ) )
+            s[ i , j , 2 ] <- rbern( 1 , inv_logit( r_mean + r_1*y_true[j,i] ) )
+        }
     }#j
 }#i
 
 # sim gift observations
-N_gifts <- 20
+N_gifts <- 5
 g <- array( 0L , dim=c(N_id,N_id,N_gifts) )
 g_mean <- -4
 g_1 <- 4
@@ -73,6 +75,7 @@ dat <- list(
 m <- stan( file="CSBM2.stan" , data=dat , chains=3 , cores=3 , iter=600 )
 
 precis(m,2)
+precis(m,3,pars="B")
 
 tracerplot(m)
 
@@ -81,14 +84,26 @@ blank2(w=2)
 par(mfrow=c(1,2))
 
 library(igraph)
-m_graph <- graph_from_adjacency_matrix( s[,,1] , mode="directed" )
+m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
 plot(m_graph , vertex.color=groups , main="truth")
 
 # plot posterior inferred network
 post <- extract.samples(m)
-p_tie_out <- round( apply( post$p_tie_out , 2:3 , mean ) )
-m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" )
+pmean <- apply( post$p_tie_out , 2:3 , mean )
+p_tie_out <- round( pmean )
+m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" , weighted=TRUE )
 plot(m_graph_est , vertex.color=groups , main="posterior mean" )
+
+# plot edge weights
+w <- as.vector(pmean)
+o <- order(w)
+blank2(w=3)
+plot( w[o] , xlab="edge (sorted by weight)" , ylab="posterior weight" , col="white" )
+pci <- apply( post$p_tie_out , 2:3 , PI , prob=0.95 )
+phi <- as.vector(pci[2,,])[o]
+plo <- as.vector(pci[1,,])[o]
+for ( i in 1:length(phi) ) lines( c(i,i) , c(phi[i],plo[i]) )
+
 
 # now without known groups
 

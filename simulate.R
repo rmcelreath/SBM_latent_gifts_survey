@@ -11,7 +11,7 @@ N_id <- 60L
 N_groups <- 3L
 
 # sample ppl into groups
-groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=c(4,2,1) )
+groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=c(3,2,1) )
 
 # define interaction matrix across groups
 B <- diag(N_groups)
@@ -72,7 +72,7 @@ dat <- list(
     g = (g)
 )
 
-m <- stan( file="CSBM2.stan" , data=dat , chains=3 , cores=3 , iter=600 )
+m <- stan( file="CSBM2.stan" , data=dat , chains=3 , cores=3 , iter=1000 )
 
 precis(m,2)
 precis(m,3,pars="B")
@@ -111,15 +111,43 @@ datu <- list(
     N_id = N_id,
     N_groups = N_groups,
     N_gifts = N_gifts,
-    group = as.integer( ifelse( runif(length(groups)) < 0 , groups , -1 ) ),
+    group = as.integer( ifelse( runif(length(groups)) < 0.5 , groups , -1 ) ),
     s = (s),
     g = (g)
 )
-datu$group[1] <- 1 # fix first individual
+datu$group[1] <- groups[1] # fix first individual
 
-mu <- stan( file="CSBM2u.stan" , data=datu , iter=1000 , chains=3 , cores=3 , control=list(adapt_delta=0.95) )
+mu <- stan( file="CSBM2u.stan" , data=datu , iter=1 , chains=3 , cores=3 , control=list(adapt_delta=0.95) )
 
-precis(mu,3)
+precis(mu,2)
+precis(mu,3,pars="B")
 
 tracerplot(mu)
 trankplot(mu)
+
+# plot true out network
+blank2(w=2)
+par(mfrow=c(1,2))
+
+library(igraph)
+m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
+plot(m_graph , vertex.color=groups , main="truth")
+
+# plot posterior inferred network
+post <- extract.samples(mu)
+pmean <- apply( post$p_tie_out , 2:3 , mean )
+p_tie_out <- round( pmean )
+
+gmean <- apply( post$p_group , 2:3 , mean )
+gest <- sapply( 1:N_id , function(i) which.max( gmean[i,] ) )
+gest <- groups
+
+m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" , weighted=TRUE )
+plot(m_graph_est , vertex.color=gest , main="posterior mean" )
+
+# true ties against inferred
+post <- extract.samples(mu)
+pmean <- apply( post$p_tie_out , 2:3 , mean )
+p_tie_out <- round( pmean )
+table( y_true , p_tie_out )
+

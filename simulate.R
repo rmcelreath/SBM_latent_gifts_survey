@@ -162,13 +162,15 @@ for ( i in 1:length(phi) ) lines( c(i,i) , c(phi[i],plo[i]) )
 
 datu <- list(
     N_id = N_id,
-    N_groups = N_groups,
+    N_groups = 4,
     N_gifts = N_gifts,
-    group = as.integer( ifelse( runif(length(groups)) < 0.5 , groups , -1 ) ),
+    group = as.integer( ifelse( runif(length(groups)) < 0.1 , groups , -1 ) ),
     s = (s),
-    g = (g)
+    g = (g),
+    alpha = rep(6,4)
 )
 datu$group[1] <- groups[1] # fix first individual
+datu$alpha <- rep(20,4)
 
 mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=2 , cores=2 , control=list(adapt_delta=0.95) )
 
@@ -180,11 +182,12 @@ trankplot(mu)
 
 # plot true out network
 blank2(w=2)
+
 par(mfrow=c(1,2))
 
 library(igraph)
 m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
-plot(m_graph , vertex.color=groups , main="truth" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5) )
+plot(m_graph , vertex.color=groups , vertex.size=8  , main="truth" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.1 )
 
 # plot posterior inferred network
 post <- extract.samples(mu)
@@ -193,12 +196,14 @@ p_tie_out <- round( pmean )
 
 gmean <- apply( post$p_group , 2:3 , mean )
 gest <- sapply( 1:N_id , function(i) which.max( gmean[i,] ) )
+# prob of each group as list, for vertex.shape="pie"
+glist <- lapply( 1:nrow(gmean) , function(i) as.integer( 10L*round( gmean[i,] , 1 ) ) )
 # calculate accuracy
 table( gest[datu$group<0]==groups[datu$group<0] )
 # cbind( round(gmean,2) , groups , datu$group , groups==gest )
 
 m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" , weighted=TRUE )
-plot(m_graph_est , vertex.color=gest , vertex.frame.color=groups , main="posterior mean" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5) )
+plot( m_graph_est , vertex.shape="pie" , vertex.pie=glist , vertex.pie.color=list(c(1,2,3,4)) , vertex.size=8 , main="posterior mean" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , vertex.label=NA )
 
 # true ties against inferred
 post <- extract.samples(mu)

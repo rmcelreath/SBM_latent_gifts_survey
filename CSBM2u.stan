@@ -6,6 +6,7 @@ data{
     int group[N_id];            // -1 indicates unobserved
     int s[N_id,N_id,2];
     int g[N_id,N_id,N_gifts];
+    vector[N_groups] alpha; // prior for dirichlet on blocks
 }
 parameters{
     matrix[N_groups,N_groups] B;
@@ -34,7 +35,7 @@ model{
 
     // group membership prior
     // assumes exclusive membership
-    pg ~ dirichlet( [ 2 , 2 , 2 ]' );
+    pg ~ dirichlet( alpha );
 
     // likelihood
     for ( i in 1:N_id ) {

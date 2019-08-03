@@ -186,10 +186,6 @@ generated quantities{
 
     // likelihood
     for ( i in 1:N_id ) {
-        vector[N_groups] termsg; // vector of probability terms for calculating prob of i being in each group --- accumulate as loop over j
-        p_group[i,] = rep_vector(0,N_groups)';
-        termsg = rep_vector(0,N_groups);
-
         for ( j in 1:N_id ) {
             p_tie_out[i,j] = 0;
 
@@ -300,8 +296,6 @@ generated quantities{
                         terms1[k1] = terms[k];
                         k = k + 1;
                         k1 = k1 + 1;
-                        // group prob terms - Pr(s,g|gA) [marginal of true tie]
-                        termsg[gA] = termsg[gA] + log_sum_exp( terms[(k-2):(k-1)] );
                     }//gA
                     //target += log_sum_exp( terms );
                     // need Pr(y|tie) / Pr(y)
@@ -346,8 +340,6 @@ generated quantities{
                             k = k + 1;
                             k1 = k1 + 1;
                         }//gB
-                        // group prob terms
-                        termsg[gA] = termsg[gA] + log_sum_exp( terms[(k-2*N_groups):(k-1)] );
                     }//gA
                     //target += log_sum_exp( terms );
                     // need Pr(y|tie) / Pr(y)
@@ -360,22 +352,103 @@ generated quantities{
 
         }//j
 
-        // group for i not observed, so compute post prob now using accculated termsg
-        if ( group[i]<0 ) {
-            real Z;
-            real NUM;
-            Z = log_sum_exp( termsg ); // denominator
-            for ( j in 1:N_groups ) {
-                NUM = termsg[j];
-                p_group[i,j] = exp( NUM - Z );
-            }
-            if ( i==3 ) {
-                print(termsg);
-                print(Z);
-                print(p_group[i,]);
-            }
-        }
+    }//i
 
+    // now compute prob of group membership
+    // loop over individuals i, groups gA, and alters j
+    for ( i in 1:N_id ) {
+        vector[N_groups] termsg; // vector of probability terms for calculating prob of i being in each group --- accumulate as loop over j
+        p_group[i,] = rep_vector(0,N_groups)';
+        termsg = rep_vector(0,N_groups);
+
+        if ( group[i] < 0 ) {
+            //group not observed
+            for ( gA in 1:N_groups ) {
+
+                termsg[gA] = log(pg[gA]); // leading term
+
+                for ( j in 1:N_id ) {
+                    if ( i!=j ) {
+
+                        // group B observed
+                        // need prob of s,g|gA marginal of true tie
+                        if ( group[i]<0 && group[j]>0 ) {
+                            vector[ 2 ] terms;
+                            int tie;
+                            tie = 0;
+                            terms[1] = 
+                                log1m_inv_logit(B[gA,group[j]]) + // prob of tie=0
+                                // prob i says i helps j
+                                bernoulli_lpmf( s[i,j,1] | inv_logit( r_mean + r1*tie ) ) + 
+                                // prob i did help j on N_gift occasions
+                                bernoulli_lpmf( g[i,j,] | inv_logit( g_mean + g1*tie ) ) + 
+                                // prob j says i helps j
+                                bernoulli_lpmf( s[j,i,2] | inv_logit( r_mean + r1*tie ) );
+                            tie = 1;
+                            terms[2] = 
+                                log_inv_logit(B[gA,group[j]]) + // prob of tie=1
+                                // prob i says i helps j
+                                bernoulli_lpmf( s[i,j,1] | inv_logit( r_mean + r1*tie ) ) + 
+                                // prob i did help j on N_gift occasions
+                                bernoulli_lpmf( g[i,j,] | inv_logit( g_mean + g1*tie ) ) + 
+                                // prob j says i helps j
+                                bernoulli_lpmf( s[j,i,2] | inv_logit( r_mean + r1*tie ) );
+                            // add Pr(g,s|gA) to termsg
+                            termsg[gA] = termsg[gA] + log_sum_exp( terms );
+                        }// B observed
+
+                        // neither group observed
+                        // need prob of s,g|gA marginal of tie and gB
+                        if ( group[i]<0 && group[j]<0 ) {
+                            vector[ 2 * N_groups ] terms;
+                            int k;
+                            k = 1;
+                            for ( gB in 1:N_groups ) {
+                                int tie;
+                                tie = 0;
+                                terms[k] = 
+                                    log(pg[gB]) + // prob gB
+                                    log1m_inv_logit(B[gA,gB]) + // prob of tie=0
+                                    // prob i says i helps j
+                                    bernoulli_lpmf( s[i,j,1] | inv_logit( r_mean + r1*tie ) ) + 
+                                    // prob i did help j on N_gift occasions
+                                    bernoulli_lpmf( g[i,j,] | inv_logit( g_mean + g1*tie ) ) + 
+                                    // prob j says i helps j
+                                    bernoulli_lpmf( s[j,i,2] | inv_logit( r_mean + r1*tie ) );
+                                k = k + 1;
+                                tie = 1;
+                                terms[k] = 
+                                    log(pg[gB]) + // prob gB
+                                    log_inv_logit(B[gA,gB]) + // prob of tie=1
+                                    // prob i says i helps j
+                                    bernoulli_lpmf( s[i,j,1] | inv_logit( r_mean + r1*tie ) ) + 
+                                    // prob i did help j on N_gift occasions
+                                    bernoulli_lpmf( g[i,j,] | inv_logit( g_mean + g1*tie ) ) + 
+                                    // prob j says i helps j
+                                    bernoulli_lpmf( s[j,i,2] | inv_logit( r_mean + r1*tie ) );
+                                k = k + 1;
+                            }//gB
+                            termsg[gA] = termsg[gA] + log_sum_exp( terms );
+                        }//neither observed
+
+                    }//i!=j
+                }//j
+
+            }//gA
+
+            // calculate Pr(gA|s,g)
+            {
+                real Z;
+                Z = log_sum_exp( termsg ); // denominator
+                for ( gA in 1:N_groups ) {
+                    p_group[i,gA] = exp( termsg[gA] - Z );
+                }
+            }
+
+        } else {
+            // group observed - just insert observed
+            p_group[i,group[i]] = 1;
+        }
     }//i
 
 }

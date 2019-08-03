@@ -109,6 +109,7 @@ par(mfrow=c(1,2))
 
 #plot(m_graph, vertex.color=groups , main="posterior mean" )
 #Pretty but not sure if super informative 
+deg <- 20
 plot(m_graph , vertex.color=groups , vertex.size = deg*.4, edge.arrow.size =0.15, 
      edge.curved = 0.35, vertex.label = NA, seed = 1,
      main="truth")
@@ -169,7 +170,7 @@ datu <- list(
 )
 datu$group[1] <- groups[1] # fix first individual
 
-mu <- stan( file="CSBM2u.stan" , data=datu , iter=1 , chains=3 , cores=3 , control=list(adapt_delta=0.95) )
+mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=2 , cores=2 , control=list(adapt_delta=0.95) )
 
 precis(mu,2)
 precis(mu,3,pars="B")
@@ -183,7 +184,7 @@ par(mfrow=c(1,2))
 
 library(igraph)
 m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
-plot(m_graph , vertex.color=groups , main="truth")
+plot(m_graph , vertex.color=groups , main="truth" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5) )
 
 # plot posterior inferred network
 post <- extract.samples(mu)
@@ -192,10 +193,12 @@ p_tie_out <- round( pmean )
 
 gmean <- apply( post$p_group , 2:3 , mean )
 gest <- sapply( 1:N_id , function(i) which.max( gmean[i,] ) )
-gest <- groups
+# calculate accuracy
+table( gest[datu$group<0]==groups[datu$group<0] )
+# cbind( round(gmean,2) , groups , datu$group , groups==gest )
 
 m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" , weighted=TRUE )
-plot(m_graph_est , vertex.color=gest , main="posterior mean" )
+plot(m_graph_est , vertex.color=gest , vertex.frame.color=groups , main="posterior mean" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5) )
 
 # true ties against inferred
 post <- extract.samples(mu)

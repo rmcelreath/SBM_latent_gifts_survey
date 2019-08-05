@@ -1,0 +1,143 @@
+%!TEX TS-program = xelatex
+%!TEX encoding = UTF-8 Unicode
+\documentclass[reqno,12pt,a4paper]{amsart}
+\usepackage[foot]{amsaddr}
+\usepackage{graphicx}
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage[paperwidth=7in,paperheight=10in,text={5in,8in},left=1in,top=1in,headheight=0.25in,headsep=0.4in,footskip=0.4in]{geometry}
+%\usepackage{mathtools}
+\usepackage{subfigure}
+\usepackage{lineno}
+\usepackage{natbib} %this allows for styles in referencing
+%\bibpunct[, ]{(}{)}{,}{a}{}{,}
+\DeclareMathOperator{\var}{var}
+\DeclareMathOperator{\cov}{cov}
+\DeclareMathOperator{\E}{E}
+
+\synctex=1
+
+\newcommand*\patchAmsMathEnvironmentForLineno[1]{%
+  \expandafter\let\csname old#1\expandafter\endcsname\csname #1\endcsname
+  \expandafter\let\csname oldend#1\expandafter\endcsname\csname end#1\endcsname
+  \renewenvironment{#1}%
+     {\linenomath\csname old#1\endcsname}%
+     {\csname oldend#1\endcsname\endlinenomath}}%
+\newcommand*\patchBothAmsMathEnvironmentsForLineno[1]{%
+  \patchAmsMathEnvironmentForLineno{#1}%
+  \patchAmsMathEnvironmentForLineno{#1*}}%
+\AtBeginDocument{%
+\patchBothAmsMathEnvironmentsForLineno{equation}%
+\patchBothAmsMathEnvironmentsForLineno{align}%
+\patchBothAmsMathEnvironmentsForLineno{flalign}%
+\patchBothAmsMathEnvironmentsForLineno{alignat}%
+\patchBothAmsMathEnvironmentsForLineno{gather}%
+\patchBothAmsMathEnvironmentsForLineno{multline}%
+}
+
+%\usepackage{lmodern}
+%\usepackage{unicode-math}
+\usepackage{mathspec}
+\usepackage{xltxtra}
+\usepackage{xunicode}
+\defaultfontfeatures{Mapping=tex-text}
+%\setsansfont[Scale=MatchLowercase,Mapping=tex-text]{Helvetica}
+%\setmonofont[Scale=0.85]{Bitstream Vera Sans Mono}
+\setmainfont[Scale=1,Ligatures={Common}]{Adobe Caslon Pro}
+\setromanfont[Scale=1,Ligatures={Common}]{Adobe Caslon Pro}
+\setmathrm[Scale=1]{Adobe Caslon Pro}
+\setmathfont(Digits,Latin)[Numbers={Lining,Proportional}]{Adobe Caslon Pro}
+
+\definecolor{linenocolor}{gray}{0.6}
+\renewcommand\thelinenumber{\color{linenocolor}\arabic{linenumber}}
+
+\usepackage{fix-cm}
+
+%\usepackage{hanging}
+
+\setcounter{totalnumber}{1}
+
+\newcommand{\mr}{\mathrm}
+\newcommand{\tsc}[1]{\text{\textsc{#1}}}
+
+\begin{document}
+
+\title[SBMs with Multiple Types of Data]{Stochastic Block Models for Latent Networks and Multiple Types of Data to Inform Edges}
+\author{Richard McElreath \and Daniel J.~Redhead}
+\address{Department of Human Behavior, Ecology and Culture, Max Planck Institute for Evolutionary Anthropology, Leipzig, Germany}
+\email{richard\_mcelreath@eva.mpg.de}
+
+%\date{\today}
+
+\maketitle
+
+{\vspace{-6pt}\footnotesize\begin{center}\today\end{center}\vspace{12pt}}
+
+\linenumbers
+\modulolinenumbers[3]
+
+
+%begin{abstract}{
+%\noindent {\small
+%abstract}
+%\end{abstract}
+
+\section{Overview}
+
+We develop a generative model structure for social network inference in which:
+\begin{enumerate}
+\item The true network is assumed to be unobserved.
+\item Each node belongs to a possibly unobserved clique (or block).
+\item Probability of a directed edge from node $i$ to node $j$ can be modeled flexibly using any combination of variables, whether at the node or clique (block) level.
+\item Multiple kinds of data can be used simultaneously to inform the network, each having its own parameters to express the association between the data and the underlying true network.
+\end{enumerate}
+We develop a fully Bayesian estimation solution, using Hamiltonian Monte Carlo, that can be readily modified.
+
+Our initial scientific objective is to investigate the reliability of different methods for eliciting social network ties in human communities. Survey methods are easier than observing the behavioral consequences of ties, such as gifts and instances of helping. But given that we are often interested in predicting helping behavior, to what extent can survey methods provide reliable information?
+
+\section{Model}
+
+To make the description simpler, first let's consider a model with no individual or block covariates. Assume that a community of $N$ individuals is divided into $K$ blocks. Each individual belongs to only one block. The true (unobserved) network comprises the presence or absence of directed ties between pairs of individuals. The probability of a tie $y_{ij}$ from an individual $i$ in block $b_i$ to an individual $j$ in block $b_j$ is given by the entry in the square matrix $B[b_i,b_j]$. For example, suppose there are $K=3$ blocks. If individuals in the same block are more likely to form ties, the matrix $B$ might be:
+\begin{align*}
+\begin{bmatrix}0.5 & 0.1 & 0.1 \\ 0.1 & 0.5 & 0.1 \\ 0.1 & 0.1 & 0.5 \end{bmatrix}
+\end{align*}
+However this structure is arbitrary and can be made a function of parameters and data.
+
+The true ties $y_{ij}$ generate observable variables $x_{ijvt}$, where $v$ is an index for the specific type of observable variable and $t$ is the time point. These $x$ variables can have any arbitrary distribution and relation to the ties $y_{ij}$. We consider as an example two types.
+\begin{enumerate}
+\item Survey data for which each $i$ nominates a set of alters $j$ who have either provided aid to $i$ or been given aid by $i$. Such data may be unreliable, and the reliability may vary by the direction, $i \rightarrow j$ versus $i \leftarrow j$. Note that $i$'s report of $j$'s aid may disagree with $j$'s report of the same relationship.
+\item Behavioral data on directed exchanges $i \rightarrow j$, such as gifts or shares of a resource. These data may be more reliable, but resource constraints may also make it impossible to share with all ties.
+\end{enumerate}
+For binary data, the model assumes:
+\begin{align*}
+	x_{ijvt} &\sim \mathrm{Bernoulli}( p_{ijv} )\\
+	\mathrm{logit}(p_{ijv}) &= \alpha_v + \beta_v y_{ij}
+\end{align*}
+where $\alpha_v$ is a baseline log-odds of a reported tie or gift, in the absence of a true tie, and $\beta_v$ is the marginal gain in log-odds when there is a true tie. This allows each variable $v$ to have a unique relationship---or lack of relationship---to the underlying network. These parameters $\alpha_v$ and $\beta_v$ can also be constructed as functions of (time-varying) covariates specific to the individuals, dyads, or blocks.
+
+All together, the generative model can be expressed:
+\begin{align*}
+	x_{ijvt} &\sim \mathrm{Bernoulli}( p_{ijv} )\\
+	\mathrm{logit}(p_{ijv}) &= \alpha_v + \beta_v y_{ij}\\
+	y_{ij} &\sim \mathrm{Bernoulli}( B[b_i,b_j] )\\
+	b_i &\sim \mathrm{Categorical}( G )\\
+	G &\sim \mathrm{Dirichlet}( \theta )
+\end{align*}
+The elements of the matrix $B$ also require priors. In a typical case, the diagonal elements, which indicate ties within a block, will have higher prior mean than the off-diagonal elements. For example:
+\begin{align*}
+	B_{kk} &\sim \mathrm{Beta}( 6 , 10 )\\
+	B_{k \bar k} &\sim \mathrm{Beta}( 1 , 10 )
+\end{align*}
+where $kk$ indicates a diagonal element and $k \bar k$ indicates an off-diagonal element. 
+
+\section{Validating the model}
+
+Model validation proceeds by first simulating data from the model. This requires plugging in values for all of the variables, except for $y_{ij}$ and $\upsilon_{ijk}$. The $y_{ij}$ values are simulated first as Bernoulli random numbers from the definition of $p_{ij}$. Then the observable $\upsilon_{ijk}$ values are simulated from the definition of $\pi_{ijk}$. 
+
+We programmed the statistical model in Stan and drew samples from the posterior distribution of the model and simulated data. This allows us to validate both theoretical usefulness of the approach as well as the validity of our code. Because Stan does not allow sampling for discrete parameters, we used the definition of the posterior distribution $P(y_{ij}=1|\upsilon_{ij})$ to compute these in Stan's generated quantities block.
+
+
+%\clearpage
+%\bibliographystyle{newapa}
+%\bibliography{covert}
+
+\end{document}

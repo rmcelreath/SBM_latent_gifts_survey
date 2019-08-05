@@ -19,51 +19,47 @@ for ( i in 1:length(B) ) if ( B[i]==0 ) B[i] <- 0.01
 for ( i in 1:length(B) ) if ( B[i]==1 ) B[i] <- 0.2
 # B[1,2] <- 0.9
 
+# varying effects on individuals
+# (1) general tendency to form out ties
+# (2) general tendency to form in ties
+v <- rmvnorm2( N_id , Mu=c(0,0) , sigma=c(1,1) , Rho=diag(2) )
+
 # sim ties
 y_true <- matrix( 0 , N_id , N_id )
-idA <- 0
-idB <- 0
 for ( i in 1:N_id ) {
     for ( j in 1:N_id ) {
         if ( i != j ) {
-            y_true[i,j] <- rbern( 1 , B[ groups[i] , groups[j] ] )
+            pij <- inv_logit( logit(B[ groups[i] , groups[j] ]) + v[i,1] + v[j,2] )
+            y_true[i,j] <- rbern( 1 , pij )
         }
     }#j
 }#i
 
-# sim survey
-# need to define probability of reporting tie, conditional on tie
-r_mean <- (-2) # average log-odds report tie (unconditional)
-r_1 <- 1 # marginal effect on log-odds when tie is real
+# set up observable variables
+N_x <- 3
+alpha <- c( 0 , -2 , -4 )
+beta <- c( 2 , 1 , 4 )
 
-# make a tensor for survey responses
-# row is focal i and column target j and 3rd index is direction ( i->j or j->i )
-s <- array( 0 , dim=c(N_id,N_id,2) )
+# sim outcomes
+# survey responses: (1) i->j, (2) j->i (as reported by i)
+s <- array( 0L , dim=c( N_id , N_id , 2 ) ) 
+# gifts
+N_gifts <- 5
+g <- array( 0L , dim=c( N_id , N_id , N_gifts ) )
 
 for ( i in 1:N_id ) {
     for ( j in 1:N_id ) {
         if ( i != j ) {
             # sim i->j
-            s[ i , j , 1 ] <- rbern( 1 , inv_logit( r_mean + r_1*y_true[i,j] ) )
-            s[ i , j , 2 ] <- rbern( 1 , inv_logit( r_mean + r_1*y_true[j,i] ) )
+            s[ i , j , 1 ] <- rbern( 1 , inv_logit( alpha[1] + beta[1]*y_true[i,j] ) )
+            s[ i , j , 2 ] <- rbern( 1 , inv_logit( alpha[2] + beta[2]*y_true[j,i] ) )
+            g[ i , j , ] <- rbern( N_gifts , inv_logit( alpha[3] + beta[3]*y_true[i,j] ) )
         }
     }#j
 }#i
 
-# sim gift observations
-N_gifts <- 5
-g <- array( 0L , dim=c(N_id,N_id,N_gifts) )
-g_mean <- -4
-g_1 <- 4
-
-for ( i in 1:N_id ) {
-    for ( j in 1:N_id ) {
-        if ( i!=j )
-            g[ i , j , ] <- rbern( N_gifts , inv_logit( g_mean + g_1*y_true[i,j] ) )
-    }#j
-}#i
-
 dat <- list(
+    N_x = 3,
     N_id = N_id,
     N_groups = N_groups,
     N_gifts = N_gifts,
@@ -77,8 +73,20 @@ m <- stan( file="CSBM2.stan" , data=dat , chains=3 , cores=3 , iter=1000 )
 precis(m,2)
 precis(m,3,pars="B")
 
-tracerplot(m)
+# true ties against inferred
+post <- extract.samples(m)
+pmean <- apply( post$p_tie_out , 2:3 , mean )
+p_tie_out <- round( pmean )
+table( y_true , p_tie_out )
 
+# individual effects
+v_est <- apply( post$v_id , 2:3 , mean )
+blank2(w=2)
+par(mfrow=c(1,2))
+plot( v[,1] , v_est[,1] )
+plot( v[,2] , v_est[,2] )
+
+tracerplot(m)
 
 library(igraph)
 
@@ -123,6 +131,11 @@ pmean <- apply( post$p_tie_out , 2:3 , mean )
 p_tie_out <- round( pmean )
 m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" , weighted=TRUE )
 
+# true ties against inferred
+pmean <- apply( post$p_tie_out , 2:3 , mean )
+p_tie_out <- round( pmean )
+table( y_true , p_tie_out )
+
 #Get some network descriptives
 #See how long the furthest path is
 diameter(m_graph_est, directed = TRUE, weights = NA)
@@ -161,18 +174,20 @@ for ( i in 1:length(phi) ) lines( c(i,i) , c(phi[i],plo[i]) )
 # now without known groups
 
 datu <- list(
+    N_x = 3,
     N_id = N_id,
-    N_groups = 4,
+    N_groups = 3,
     N_gifts = N_gifts,
     group = as.integer( ifelse( runif(length(groups)) < 0.1 , groups , -1 ) ),
     s = (s),
     g = (g),
-    alpha = rep(6,4)
+    pg_prior = rep(6,3)
 )
 datu$group[1] <- groups[1] # fix first individual
-datu$alpha <- rep(20,4)
+datu$pg_prior <- rep(10,3)
+datu$group
 
-mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=2 , cores=2 , control=list(adapt_delta=0.95) )
+mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=3 , cores=3 , control=list(adapt_delta=0.95) )
 
 precis(mu,2)
 precis(mu,3,pars="B")
@@ -180,14 +195,23 @@ precis(mu,3,pars="B")
 tracerplot(mu)
 trankplot(mu)
 
+
+# true ties against inferred
+post <- extract.samples(mu)
+pmean <- apply( post$p_tie_out , 2:3 , mean )
+p_tie_out <- round( pmean )
+table( y_true , p_tie_out )
+
+
 # plot true out network
-blank2(w=2)
+blank2(w=2,ex=2)
 
 par(mfrow=c(1,2))
 
 library(igraph)
 m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
-plot(m_graph , vertex.color=groups , vertex.size=8  , main="truth" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.1 )
+lx <- layout_nicely(m_graph)
+plot(m_graph , vertex.color=groups , vertex.size=8  , main="truth" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , layout=lx )
 
 # plot posterior inferred network
 post <- extract.samples(mu)
@@ -203,11 +227,12 @@ table( gest[datu$group<0]==groups[datu$group<0] )
 # cbind( round(gmean,2) , groups , datu$group , groups==gest )
 
 m_graph_est <- graph_from_adjacency_matrix( p_tie_out , mode="directed" , weighted=TRUE )
-plot( m_graph_est , vertex.shape="pie" , vertex.pie=glist , vertex.pie.color=list(c(1,2,3,4)) , vertex.size=8 , main="posterior mean" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , vertex.label=NA )
+plot( m_graph_est , vertex.shape="pie" , vertex.pie=glist , vertex.pie.color=list(c(1,2,3,4)) , vertex.size=8 , main="posterior mean" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , vertex.label=NA , layout=lx )
 
-# true ties against inferred
-post <- extract.samples(mu)
-pmean <- apply( post$p_tie_out , 2:3 , mean )
-p_tie_out <- round( pmean )
-table( y_true , p_tie_out )
+# elly's style
+blank2(w=4)
+par(mfrow=c(1,4))
+lx <- layout_nicely(m_graph_est)
+plot( m_graph_est , vertex.color=gest , vertex.size=8 , main="posterior mean" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , vertex.label=NA , layout=lx )
+for ( i in 1:N_groups ) plot( m_graph_est , vertex.color=gray(1-gmean[,i]) , vertex.size=8 , main=concat("clique ",i) , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , vertex.label=NA , layout=lx )
 

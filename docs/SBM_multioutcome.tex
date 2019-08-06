@@ -96,6 +96,8 @@ Our initial scientific objective is to investigate the reliability of different 
 
 \section{Model}
 
+\subsection{Basic structure}
+
 To make the description simpler, first let's consider a model with no individual or block covariates. Assume that a community of $N$ individuals is divided into $K$ blocks. Each individual belongs to only one block. The true (unobserved) network comprises the presence or absence of directed ties between pairs of individuals. The probability of a tie $y_{ij}$ from an individual $i$ in block $b_i$ to an individual $j$ in block $b_j$ is given by the entry in the square matrix $B[b_i,b_j]$. For example, suppose there are $K=3$ blocks. If individuals in the same block are more likely to form ties, the matrix $B$ might be:
 \begin{align*}
 \begin{bmatrix}0.5 & 0.1 & 0.1 \\ 0.1 & 0.5 & 0.1 \\ 0.1 & 0.1 & 0.5 \end{bmatrix}
@@ -119,8 +121,8 @@ All together, the generative model can be expressed:
 	x_{ijvt} &\sim \mathrm{Bernoulli}( p_{ijv} )\\
 	\mathrm{logit}(p_{ijv}) &= \alpha_v + \beta_v y_{ij}\\
 	y_{ij} &\sim \mathrm{Bernoulli}( B[b_i,b_j] )\\
-	b_i &\sim \mathrm{Categorical}( G )\\
-	G &\sim \mathrm{Dirichlet}( \theta )
+	b_i &\sim \mathrm{Categorical}( \Phi )\\
+	\Phi &\sim \mathrm{Dirichlet}( \theta )
 \end{align*}
 The elements of the matrix $B$ also require priors. In a typical case, the diagonal elements, which indicate ties within a block, will have higher prior mean than the off-diagonal elements. For example:
 \begin{align*}
@@ -129,11 +131,55 @@ The elements of the matrix $B$ also require priors. In a typical case, the diago
 \end{align*}
 where $kk$ indicates a diagonal element and $k \bar k$ indicates an off-diagonal element. 
 
+\subsection{Individual effects}
+
+Individual nodes may have unique tendencies to form ties or receive ties across blocks. Nodes may also have unique $\alpha$ and $\beta$ effects. We allow these effects by specifying the ties as:
+\begin{align*}
+	y_{ij} &\sim \mathrm{Bernoulli}( q_{ij} )\\
+	\mathrm{logit}(q_{ij}) &= \mathrm{logit}^{-1} \big( B[b_i,b_j] \big) + g_i + r_j
+\end{align*}
+where $g_i$ is a parameter that measures $i$'s tendency to form ties and $r_j$ measures $j$'s tendency to receive directed ties. These effects are in addition to the block effect. Individual effects on the observable $x$ variables have similar influence:
+\begin{align*}
+	x_{ijvt} &\sim \mathrm{Bernoulli}( p_{ijv} )\\
+	\mathrm{logit}(p_{ijv}) &= \alpha_v + G_{iv} + R_{jv} + \beta_v y_{ij} 
+\end{align*}
+where $G_{iv}$ is the tendency of $i$ to perform the behavior in general, $R_{jv}$ is $j$'s tendency to receive the behavior, both independent of the network. How can these effects be interpreted? Suppose for example the behavior is reporting help, and there is a node who reports helping everyone. In that case, $G_{iv}$ would be large. It would similarly be possible to specify individual effects on $\beta_{v}$.
+
+We model the individual effects as standard partially pooled parameters. For example, if there are three $x$ variables, then there are 8 parameters unique to each node. This defines an 8-by-8 covariance matrix. We set priors independently on the scale parameters and correlation matrix.
+
+\section{Computation}
+
+We implement the statistical model in Stan (mc-stan.org), a library for Hamiltonian Monte Carlo simulation. Stan does not allow discrete parameters, but we recover posterior distributions for the discrete $y_{ij}$ tie and $b_i$ block parameters nevertheless. In this brief section, we explain how.
+
+To compute probabilities of observed variables, we marginalize over the unknown discrete variables $y_{ij}$ and $b_i$ and $b_j$. Consider the simplest case in which both $b_i$ and $b_j$ are observed. Then the probability of $x_{ij}$ is given by:
+\begin{align*}
+	\Pr(x_{ij}|\Theta) &= \Pr(y_{ij}=1|\Theta)\Pr(x_{ij}|\Theta,y_{ij}=1) \\
+	&\quad + \Pr(y_{ij}=0|\Theta)\Pr(x_{ij}|\Theta,y_{ij}=0)
+\end{align*}
+where $\Theta$ is a vector of relevant parameters. Then after sampling, we can recover the posterior distribution of $y_{ij}$ is:
+\begin{align*}
+	\Pr(y_{ij}=1|x_{ij},\Theta) = \frac{\Pr(y_{ij}=1|\Theta)\Pr(x_{ij}|y_{ij}=1,\Theta)}{\Pr(x_{ij}|\Theta)}
+\end{align*}
+from Bayes rule. This can be calculated using MCMC samples of the parameters $\Theta$.
+
+The same approach works for the block assignments $b_i$ and $b_j$. In that case, there are more terms to sum over in the mixture. For example if there are 3 blocks and neither $b_i$ nor $b_j$ are observed, then there will be 6 terms in the mixture probability $\Pr(x_{ij}|\Theta)$:
+\begin{align*}
+	\Pr(x_{ij}|\Theta) &= \sum_T \sum_m \sum_n \Pr(b_i=m) \Pr(b_j=n) \\
+	& \quad \times \Pr(y_{ij}=T|b_i=m,b_j=n)   \Pr(x_{ij}|y_{ij}=1,b_i=m,b_j=n)
+\end{align*}
+omitting the $\Theta$ notation in the above for brevity. 
+
+Again we recover posterior distributions for $b_i$ by inverting the probabilities post sampling. Note however that computing the posterior probability of each node's $b_i$ requires considering all $j$ alters at once.
+\begin{align*}
+	\Pr(b_i=m|x_{ij}) = \frac{ \Pr(b_i=m) \sum_j \Pr(x_{ij}|b_i=m) }{ \sum_n \Pr(b_i=n) \sum_j \Pr(x_{ij}|b_i=n) }
+\end{align*}
+where $\Pr(x_{ij}|b_i)$ marginalizes over $y_{ij}$ and $b_j$.
+
+Our Stan code marks the sections corresponding to each of these calculations.
+
 \section{Validating the model}
 
-Model validation proceeds by first simulating data from the model. This requires plugging in values for all of the variables, except for $y_{ij}$ and $\upsilon_{ijk}$. The $y_{ij}$ values are simulated first as Bernoulli random numbers from the definition of $p_{ij}$. Then the observable $\upsilon_{ijk}$ values are simulated from the definition of $\pi_{ijk}$. 
-
-We programmed the statistical model in Stan and drew samples from the posterior distribution of the model and simulated data. This allows us to validate both theoretical usefulness of the approach as well as the validity of our code. Because Stan does not allow sampling for discrete parameters, we used the definition of the posterior distribution $P(y_{ij}=1|\upsilon_{ij})$ to compute these in Stan's generated quantities block.
+Model validation proceeds by first simulating data from the model. 
 
 
 %\clearpage

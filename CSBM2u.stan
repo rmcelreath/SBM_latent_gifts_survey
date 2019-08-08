@@ -14,11 +14,23 @@ parameters{
     vector[N_x] alpha;
     vector<lower=0>[N_x] beta;
     simplex[N_groups] pg; // vector of base rates of individuals being in each group
+    // varying effects on individuals
+    matrix[2,N_id] z_id;
+    vector<lower=0>[2] sigma_id;
+    cholesky_factor_corr[2] L_Rho_id;
+}
+transformed parameters{
+    matrix[N_id,2] v_id;
+    v_id = (diag_pre_multiply(sigma_id,L_Rho_id) * z_id)';
 }
 model{
     
     alpha ~ normal(0,1);
     beta ~ normal(1,1);
+
+    to_vector(z_id) ~ normal(0,1);
+    sigma_id ~ normal(0,1);
+    L_Rho_id ~ lkj_corr_cholesky(4);
 
     // priors for B
     for ( i in 1:N_groups )
@@ -39,15 +51,17 @@ model{
         for ( j in 1:N_id ) {
             if ( i != j ) {
                 int k; // temp counting variable for mixture terms
-
+                real pij_logit;
+                
                 // both groups observed
                 if ( group[i]>0 && group[j]>0 ) {
                     vector[2] terms;
                     int tie;
                     // consider each possible state of true tie and compute prob of data
+                    pij_logit = B[group[i],group[j]] + v_id[i,1] + v_id[j,2];
                     tie = 0;
                     terms[1] = 
-                        log1m_inv_logit(B[group[i],group[j]]) + 
+                        log1m_inv_logit( pij_logit ) + 
                         // prob i says i helps j
                         bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                         // prob i did help j on N_gift occasions
@@ -56,7 +70,7 @@ model{
                         bernoulli_lpmf( s[j,i,2] | inv_logit( alpha[2] + beta[2]*tie ) );
                     tie = 1;
                     terms[2] = 
-                        log_inv_logit(B[group[i],group[j]]) + 
+                        log_inv_logit( pij_logit ) + 
                         // prob i says i helps j
                         bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                         // prob i did help j on N_gift occasions
@@ -76,10 +90,11 @@ model{
                     k = 1;
                     for ( gB in 1:N_groups ) {
                         int tie;
+                        pij_logit = B[group[i],gB] + v_id[i,1] + v_id[j,2];
                         tie = 0;
                         terms[k] = 
                             log(pg[gB]) + // prob B in group
-                            log1m_inv_logit(B[group[i],gB]) + // prob of tie=0
+                            log1m_inv_logit( pij_logit ) + // prob of tie=0
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -90,7 +105,7 @@ model{
                         tie = 1;
                         terms[k] = 
                             log(pg[gB]) + // prob B in group
-                            log_inv_logit(B[group[i],gB]) + // prob of tie=1
+                            log_inv_logit( pij_logit ) + // prob of tie=1
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -109,10 +124,11 @@ model{
                     k = 1;
                     for ( gA in 1:N_groups ) {
                         int tie;
+                        pij_logit = B[gA,group[j]] + v_id[i,1] + v_id[j,2];
                         tie = 0;
                         terms[k] = 
                             log(pg[gA]) + // prob A in group
-                            log1m_inv_logit(B[gA,group[j]]) + // prob of tie=0
+                            log1m_inv_logit( pij_logit ) + // prob of tie=0
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -123,7 +139,7 @@ model{
                         tie = 1;
                         terms[k] = 
                             log(pg[gA]) + // prob A in group
-                            log_inv_logit(B[gA,group[j]]) + // prob of tie=1
+                            log_inv_logit( pij_logit ) + // prob of tie=1
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -144,10 +160,11 @@ model{
                     for ( gA in 1:N_groups ) {
                         for ( gB in 1:N_groups ) {
                             int tie;
+                            pij_logit = B[gA,gB] + v_id[i,1] + v_id[j,2];
                             tie = 0;
                             terms[k] = 
                                 log(pg[gA]) + log(pg[gB]) + // prob groups
-                                log1m_inv_logit(B[gA,gB]) + // prob of tie=0
+                                log1m_inv_logit( pij_logit ) + // prob of tie=0
                                 // prob i says i helps j
                                 bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                 // prob i did help j on N_gift occasions
@@ -158,7 +175,7 @@ model{
                             tie = 1;
                             terms[k] = 
                                 log(pg[gA]) + log(pg[gB]) + // prob groups
-                                log_inv_logit(B[gA,gB]) + // prob of tie=1
+                                log_inv_logit( pij_logit ) + // prob of tie=1
                                 // prob i says i helps j
                                 bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                 // prob i did help j on N_gift occasions
@@ -189,15 +206,17 @@ generated quantities{
 
             if ( i != j ) {
                 int k; // temp counting variable for mixture terms
+                real pij_logit;
 
                 // both groups observed
                 if ( group[i]>0 && group[j]>0 ) {
                     vector[2] terms;
                     int tie;
                     // consider each possible state of true tie and compute prob of data
+                    pij_logit = B[group[i],group[j]] + v_id[i,1] + v_id[j,2];
                     tie = 0;
                     terms[1] = 
-                        log1m_inv_logit(B[group[i],group[j]]) + 
+                        log1m_inv_logit( pij_logit ) + 
                         // prob i says i helps j
                         bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                         // prob i did help j on N_gift occasions
@@ -206,7 +225,7 @@ generated quantities{
                         bernoulli_lpmf( s[j,i,2] | inv_logit( alpha[2] + beta[2]*tie ) );
                     tie = 1;
                     terms[2] = 
-                        log_inv_logit(B[group[i],group[j]]) + 
+                        log_inv_logit( pij_logit ) + 
                         // prob i says i helps j
                         bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                         // prob i did help j on N_gift occasions
@@ -229,10 +248,11 @@ generated quantities{
                     k1 = 1;
                     for ( gB in 1:N_groups ) {
                         int tie;
+                        pij_logit = B[group[i],gB] + v_id[i,1] + v_id[j,2];
                         tie = 0;
                         terms[k] = 
                             log(pg[gB]) + // prob B in group
-                            log1m_inv_logit(B[group[i],gB]) + // prob of tie=0
+                            log1m_inv_logit( pij_logit ) + // prob of tie=0
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -243,7 +263,7 @@ generated quantities{
                         tie = 1;
                         terms[k] = 
                             log(pg[gB]) + // prob B in group
-                            log_inv_logit(B[group[i],gB]) + // prob of tie=1
+                            log_inv_logit( pij_logit ) + // prob of tie=1
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -270,10 +290,11 @@ generated quantities{
                     k1 = 1;
                     for ( gA in 1:N_groups ) {
                         int tie;
+                        pij_logit = B[gA,group[j]] + v_id[i,1] + v_id[j,2];
                         tie = 0;
                         terms[k] = 
                             log(pg[gA]) + // prob A in group
-                            log1m_inv_logit(B[gA,group[j]]) + // prob of tie=0
+                            log1m_inv_logit( pij_logit ) + // prob of tie=0
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -284,7 +305,7 @@ generated quantities{
                         tie = 1;
                         terms[k] = 
                             log(pg[gA]) + // prob A in group
-                            log_inv_logit(B[gA,group[j]]) + // prob of tie=1
+                            log_inv_logit( pij_logit ) + // prob of tie=1
                             // prob i says i helps j
                             bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                             // prob i did help j on N_gift occasions
@@ -313,10 +334,11 @@ generated quantities{
                     for ( gA in 1:N_groups ) {
                         for ( gB in 1:N_groups ) {
                             int tie;
+                            pij_logit = B[gA,gB] + v_id[i,1] + v_id[j,2];
                             tie = 0;
                             terms[k] = 
                                 log(pg[gA]) + log(pg[gB]) + // prob groups
-                                log1m_inv_logit(B[gA,gB]) + // prob of tie=0
+                                log1m_inv_logit( pij_logit ) + // prob of tie=0
                                 // prob i says i helps j
                                 bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                 // prob i did help j on N_gift occasions
@@ -327,7 +349,7 @@ generated quantities{
                             tie = 1;
                             terms[k] = 
                                 log(pg[gA]) + log(pg[gB]) + // prob groups
-                                log_inv_logit(B[gA,gB]) + // prob of tie=1
+                                log_inv_logit( pij_logit ) + // prob of tie=1
                                 // prob i says i helps j
                                 bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                 // prob i did help j on N_gift occasions
@@ -367,15 +389,17 @@ generated quantities{
 
                 for ( j in 1:N_id ) {
                     if ( i!=j ) {
+                        real pij_logit;
 
                         // group B observed
                         // need prob of s,g|gA marginal of true tie
                         if ( group[i]<0 && group[j]>0 ) {
                             vector[ 2 ] terms;
                             int tie;
+                            pij_logit = B[gA,group[j]] + v_id[i,1] + v_id[j,2];
                             tie = 0;
                             terms[1] = 
-                                log1m_inv_logit(B[gA,group[j]]) + // prob of tie=0
+                                log1m_inv_logit( pij_logit ) + // prob of tie=0
                                 // prob i says i helps j
                                 bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                 // prob i did help j on N_gift occasions
@@ -384,7 +408,7 @@ generated quantities{
                                 bernoulli_lpmf( s[j,i,2] | inv_logit( alpha[2] + beta[2]*tie ) );
                             tie = 1;
                             terms[2] = 
-                                log_inv_logit(B[gA,group[j]]) + // prob of tie=1
+                                log_inv_logit( pij_logit ) + // prob of tie=1
                                 // prob i says i helps j
                                 bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                 // prob i did help j on N_gift occasions
@@ -403,10 +427,11 @@ generated quantities{
                             k = 1;
                             for ( gB in 1:N_groups ) {
                                 int tie;
+                                pij_logit = B[gA,gB] + v_id[i,1] + v_id[j,2];
                                 tie = 0;
                                 terms[k] = 
                                     log(pg[gB]) + // prob gB
-                                    log1m_inv_logit(B[gA,gB]) + // prob of tie=0
+                                    log1m_inv_logit( pij_logit ) + // prob of tie=0
                                     // prob i says i helps j
                                     bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                     // prob i did help j on N_gift occasions
@@ -417,7 +442,7 @@ generated quantities{
                                 tie = 1;
                                 terms[k] = 
                                     log(pg[gB]) + // prob gB
-                                    log_inv_logit(B[gA,gB]) + // prob of tie=1
+                                    log_inv_logit( pij_logit ) + // prob of tie=1
                                     // prob i says i helps j
                                     bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
                                     // prob i did help j on N_gift occasions

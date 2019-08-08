@@ -68,7 +68,7 @@ dat <- list(
     g = (g)
 )
 
-m <- stan( file="CSBM2.stan" , data=dat , chains=3 , cores=3 , iter=1000 )
+m <- stan( file="CSBM2.stan" , data=dat , chains=1 , cores=3 , iter=1000 )
 
 precis(m,2)
 precis(m,3,pars="B")
@@ -157,8 +157,7 @@ range(degree(m_graph_est, mode="out"))
 #plot(m_graph_est , vertex.color=groups , main="posterior mean" )
 
 # Again, pretty but maybe not the most informative
-plot(m_graph_est ,vertex.color=groups , vertex.size = deg*.3, edge.arrow.size =0.15, 
-     edge.curved = 0.35,  vertex.label = NA,  seed = 1, main="posterior mean" )
+plot(m_graph_est ,vertex.color=groups , vertex.size = deg*.3, edge.arrow.size =0.15, edge.curved = 0.35,  vertex.label = NA,  seed = 1, main="posterior mean" )
 
 # plot edge weights
 w <- as.vector(pmean)
@@ -187,7 +186,7 @@ datu$group[1] <- groups[1] # fix first individual
 datu$pg_prior <- rep(10,3)
 datu$group
 
-mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=3 , cores=3 , control=list(adapt_delta=0.95) )
+mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=1 , cores=3 , control=list(adapt_delta=0.95) )
 
 precis(mu,2)
 precis(mu,3,pars="B")

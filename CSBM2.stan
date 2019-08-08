@@ -1,4 +1,21 @@
 // (covariate) stochastic block model with observed groups
+functions{
+    // probability of observed variables relevant to ij dyad
+    // (1) s[i,j,1]: i's report of i->j
+    // (2) s[j,i,2]: j's report of i->j
+    // (3) g[i,j,]: i's gifts i->j
+    real prob_sgij( int sij1, int sji2, int[] gij, int tie, vector alpha, vector beta ) {
+        real y;
+        y = 
+            // prob i says helps j
+            bernoulli_lpmf( sij1 | inv_logit( alpha[1] + beta[1]*tie ) ) + 
+            // prob i did help j on N_gift occasions
+            bernoulli_lpmf( gij | inv_logit( alpha[3] + beta[3]*tie ) ) + 
+            // prob j says i helps j
+            bernoulli_lpmf( sji2 | inv_logit( alpha[2] + beta[2]*tie ) );
+        return(y);
+    }
+}
 data{
     int N_x;
     int N_id;
@@ -49,12 +66,7 @@ model{
                 // consider each possible state of true tie and compute prob of data
                 for ( tie in 0:1 ) {
                     terms[tie+1] = 
-                        // prob i says i helps j
-                        bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
-                        // prob i did help j on N_gift occasions
-                        bernoulli_lpmf( g[i,j,] | inv_logit( alpha[3] + beta[3]*tie ) ) + 
-                        // prob j says i helps j
-                        bernoulli_lpmf( s[j,i,2] | inv_logit( alpha[2] + beta[2]*tie ) );
+                        prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha , beta );
                 }
                 pij = inv_logit( B[group[i],group[j]] + v_id[i,1] + v_id[j,2] );
                 target += log_mix( pij , terms[2] , terms[1] );
@@ -79,21 +91,11 @@ generated quantities{
                 tie = 0;
                 terms[1] = 
                     log1m_inv_logit( pij_logit ) + 
-                    // prob i says i helps j
-                    bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
-                    // prob i did help j on N_gift occasions
-                    bernoulli_lpmf( g[i,j,] | inv_logit( alpha[3] + beta[3]*tie ) ) + 
-                    // prob j says i helps j
-                    bernoulli_lpmf( s[j,i,2] | inv_logit( alpha[2] + beta[2]*tie ) );
+                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha , beta );
                 tie = 1;
                 terms[2] = 
                     log_inv_logit( pij_logit ) + 
-                    // prob i says i helps j
-                    bernoulli_lpmf( s[i,j,1] | inv_logit( alpha[1] + beta[1]*tie ) ) + 
-                    // prob i did help j on N_gift occasions
-                    bernoulli_lpmf( g[i,j,] | inv_logit( alpha[3] + beta[3]*tie ) ) + 
-                    // prob j says i helps j
-                    bernoulli_lpmf( s[j,i,2] | inv_logit( alpha[2] + beta[2]*tie ) );
+                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha , beta );
                 //target += log_mix( inv_logit(B[group[i],group[j]]) , terms[2] , terms[1] );
                 p_tie_out[i,j] = exp(
                         terms[2] - log_sum_exp( terms )

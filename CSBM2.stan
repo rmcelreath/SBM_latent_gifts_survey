@@ -30,12 +30,16 @@ parameters{
     vector[N_x] alpha;
     vector<lower=0>[N_x] beta;
     // varying effects on individuals
-    matrix[2,N_id] z_id;
-    vector<lower=0>[2] sigma_id;
-    cholesky_factor_corr[2] L_Rho_id;
+    matrix[ 2 + N_x*2 ,N_id] z_id;
+    vector<lower=0>[ 2 + N_x*2 ] sigma_id;
+    cholesky_factor_corr[ 2 + N_x*2 ] L_Rho_id;
 }
 transformed parameters{
-    matrix[N_id,2] v_id;
+    matrix[N_id, 2 + N_x*2 ] v_id; 
+    // 2 + N_x*2 effects
+    // [1] g_i: general tendency to form out ties
+    // [2] r_i: general tendency to receive in ties
+    // [3+] individual alpha/beta adjustments
     v_id = (diag_pre_multiply(sigma_id,L_Rho_id) * z_id)';
 }
 model{
@@ -63,10 +67,12 @@ model{
             if ( i != j ) {
                 vector[2] terms;
                 real pij;
+                vector[N_x] alpha_id = alpha + v_id[i, 3:(2+N_x) ]';
+                vector[N_x] beta_id = beta + v_id[i, (3+N_x):(2+2*N_x) ]';
                 // consider each possible state of true tie and compute prob of data
                 for ( tie in 0:1 ) {
                     terms[tie+1] = 
-                        prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha , beta );
+                        prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id );
                 }
                 pij = inv_logit( B[group[i],group[j]] + v_id[i,1] + v_id[j,2] );
                 target += log_mix( pij , terms[2] , terms[1] );
@@ -86,17 +92,18 @@ generated quantities{
                 vector[2] terms;
                 real pij_logit;
                 int tie;
+                vector[N_x] alpha_id = alpha + v_id[i, 3:(2+N_x) ]';
+                vector[N_x] beta_id = beta + v_id[i, (3+N_x):(2+2*N_x) ]';
                 pij_logit = B[group[i],group[j]] + v_id[i,1] + v_id[j,2];
                 // consider each possible state of true tie and compute prob of data
                 tie = 0;
                 terms[1] = 
                     log1m_inv_logit( pij_logit ) + 
-                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha , beta );
+                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id );
                 tie = 1;
                 terms[2] = 
                     log_inv_logit( pij_logit ) + 
-                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha , beta );
-                //target += log_mix( inv_logit(B[group[i],group[j]]) , terms[2] , terms[1] );
+                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id );
                 p_tie_out[i,j] = exp(
                         terms[2] - log_sum_exp( terms )
                     );

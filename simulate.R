@@ -47,6 +47,9 @@ s <- array( 0L , dim=c( N_id , N_id , 2 ) )
 N_gifts <- 5
 g <- array( 0L , dim=c( N_id , N_id , N_gifts ) )
 
+# an individual with bad reports
+alfonzo_id <- 1
+
 for ( i in 1:N_id ) {
     for ( j in 1:N_id ) {
         if ( i != j ) {
@@ -54,6 +57,9 @@ for ( i in 1:N_id ) {
             s[ i , j , 1 ] <- rbern( 1 , inv_logit( alpha[1] + beta[1]*y_true[i,j] ) )
             s[ i , j , 2 ] <- rbern( 1 , inv_logit( alpha[2] + beta[2]*y_true[j,i] ) )
             g[ i , j , ] <- rbern( N_gifts , inv_logit( alpha[3] + beta[3]*y_true[i,j] ) )
+
+            if ( i==alfonzo_id ) 
+                s[ i , j , 1 ] <- rbern( 1 , inv_logit( 3 + beta[1]*y_true[i,j] ) )
         }
     }#j
 }#i
@@ -68,7 +74,7 @@ dat <- list(
     g = (g)
 )
 
-m <- stan( file="CSBM2.stan" , data=dat , chains=1 , cores=3 , iter=1000 )
+m <- stan( file="CSBM2.stan" , data=dat , chains=3 , cores=3 , iter=1000 )
 
 precis(m,2)
 precis(m,3,pars="B")
@@ -78,6 +84,12 @@ post <- extract.samples(m)
 pmean <- apply( post$p_tie_out , 2:3 , mean )
 p_tie_out <- round( pmean )
 table( y_true , p_tie_out )
+
+# grid
+blank2(w=2)
+par(mfrow=c(1,2))
+image(y_true)
+image(pmean)
 
 # individual effects
 v_est <- apply( post$v_id , 2:3 , mean )

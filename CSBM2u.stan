@@ -18,7 +18,7 @@ functions{
 }
 data{
     int N_id;
-    int N_groups;
+    int N_groups;               
     int N_gifts;
     int N_x;                    // number of outcomes to inform ties
     int group[N_id];            // -1 indicates unobserved

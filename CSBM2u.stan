@@ -10,9 +10,14 @@ functions{
             // prob i says helps j
             bernoulli_lpmf( sij1 | inv_logit( alpha[1] + beta[1]*tie ) ) + 
             // prob i did help j on N_gift occasions
-            bernoulli_lpmf( gij | inv_logit( alpha[3] + beta[3]*tie ) ) + 
+            //bernoulli_lpmf( gij | inv_logit( alpha[3] + beta[3]*tie ) ) + 
             // prob j says i helps j
             bernoulli_lpmf( sji2 | inv_logit( alpha[2] + beta[2]*tie ) );
+        for ( k in 1:size(gij) ) {
+            if ( gij[k] > -1 )
+                // prob i did help j on N_gift occasions
+                y = y + bernoulli_lpmf( gij[k] | inv_logit( alpha[3] + beta[3]*tie ) );
+        }//k
         return(y);
     }
 }

@@ -61,7 +61,7 @@
 
 \begin{document}
 
-\title[SBMs with Multiple Types of Data]{Stochastic Block Models for Latent Networks and Multiple Types of Data to Inform Edges}
+\title[SBMs with Multiple Types of Data]{Stochastic Block Models for Latent Networks and Multiple Measurement Types}
 \author{Richard McElreath \and Daniel J.~Redhead}
 \address{Department of Human Behavior, Ecology and Culture, Max Planck Institute for Evolutionary Anthropology, Leipzig, Germany}
 \email{richard\_mcelreath@eva.mpg.de}
@@ -83,9 +83,9 @@
 
 \section{Overview}
 
-We develop a generative model structure for social network inference in which:
+We develop a generative modeling framework for social network inference in which:
 \begin{enumerate}
-\item The true network is assumed to be unobserved.
+\item The true network is unobserved.
 \item Each node belongs to a possibly unobserved clique (or block).
 \item Probability of a directed edge from node $i$ to node $j$ can be modeled flexibly using any combination of variables, whether at the node or clique (block) level.
 \item Multiple kinds of data can be used simultaneously to inform the network, each having its own parameters to express the association between the data and the underlying true network.
@@ -165,13 +165,13 @@ from Bayes rule. This can be calculated using MCMC samples of the parameters $\T
 The same approach works for the block assignments $b_i$ and $b_j$. In that case, there are more terms to sum over in the mixture. For example if there are 3 blocks and neither $b_i$ nor $b_j$ are observed, then there will be 6 terms in the mixture probability $\Pr(x_{ij}|\Theta)$:
 \begin{align*}
 	\Pr(x_{ij}|\Theta) &= \sum_T \sum_m \sum_n \Pr(b_i=m) \Pr(b_j=n) \\
-	& \quad \times \Pr(y_{ij}=T|b_i=m,b_j=n)   \Pr(x_{ij}|y_{ij}=1,b_i=m,b_j=n)
+	& \quad \times \Pr(y_{ij}=T|b_i=m,b_j=n)   \Pr(x_{ij}|y_{ij}=T,b_i=m,b_j=n)
 \end{align*}
 omitting the $\Theta$ notation in the above for brevity. 
 
-Again we recover posterior distributions for $b_i$ by inverting the probabilities post sampling. Note however that computing the posterior probability of each node's $b_i$ requires considering all $j$ alters at once.
+Again we recover posterior distributions for $b_i$ by inverting the probabilities post sampling. Note however that computing the posterior probability of each node's $b_i$ requires considering all $j$ alters at once. Otherwise the model implies that $i$ has different block membership for each $j$.
 \begin{align*}
-	\Pr(b_i=m|x_{ij}) = \frac{ \Pr(b_i=m) \sum_j \Pr(x_{ij}|b_i=m) }{ \sum_n \Pr(b_i=n) \sum_j \Pr(x_{ij}|b_i=n) }
+	\Pr(b_i=m|x_{ij}) = \frac{ \Pr(b_i=m) \prod_j \Pr(x_{ij}|b_i=m) }{ \sum_n \Pr(b_i=n) \prod_j \Pr(x_{ij}|b_i=n) }
 \end{align*}
 where $\Pr(x_{ij}|b_i)$ marginalizes over $y_{ij}$ and $b_j$.
 

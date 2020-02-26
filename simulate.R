@@ -9,14 +9,15 @@ library(rethinking)
 
 N_id <- 60L
 N_groups <- 3L
+gprobs <- c(3,1,1)
 
 # sample ppl into groups
-groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=c(3,2,1) )
+groups <- sample( 1:N_groups , size=N_id , replace=TRUE , prob=gprobs )
 
 # define interaction matrix across groups
 B <- diag(N_groups)
-for ( i in 1:length(B) ) if ( B[i]==0 ) B[i] <- 0.01
-for ( i in 1:length(B) ) if ( B[i]==1 ) B[i] <- 0.2
+for ( i in 1:length(B) ) if ( B[i]==0 ) B[i] <- 0.1
+for ( i in 1:length(B) ) if ( B[i]==1 ) B[i] <- 0.5
 # B[1,2] <- 0.9
 
 # varying effects on individuals
@@ -40,12 +41,17 @@ N_x <- 3
 alpha <- c( 0 , -2 , -4 )
 beta <- c( 2 , 1 , 4 )
 
+# set up survey contamination effects
+# first item asked influences answer to second item
+theta <- 0.5
+
 # sim outcomes
 # survey responses: (1) i->j, (2) j->i (as reported by i)
 s <- array( 0L , dim=c( N_id , N_id , 2 ) ) 
 # gifts
 N_gifts <- 5
 g <- array( 0L , dim=c( N_id , N_id , N_gifts ) )
+prob_obs_g <- 0.8 # prob observe gift 0/1 for ij on time t
 
 # an individual with bad reports
 alfonzo_id <- 1
@@ -55,11 +61,17 @@ for ( i in 1:N_id ) {
         if ( i != j ) {
             # sim i->j
             s[ i , j , 1 ] <- rbern( 1 , inv_logit( alpha[1] + beta[1]*y_true[i,j] ) )
-            s[ i , j , 2 ] <- rbern( 1 , inv_logit( alpha[2] + beta[2]*y_true[j,i] ) )
-            g[ i , j , ] <- rbern( N_gifts , inv_logit( alpha[3] + beta[3]*y_true[i,j] ) )
-
             if ( i==alfonzo_id ) 
                 s[ i , j , 1 ] <- rbern( 1 , inv_logit( 3 + beta[1]*y_true[i,j] ) )
+
+            s[ i , j , 2 ] <- rbern( 1 , inv_logit( (1-s[i,j,1])*alpha[2] + beta[2]*y_true[j,i] + s[i,j,1]*theta ) )
+
+            g[ i , j , ] <- rep( -1 , N_gifts )
+            for ( k in 1:N_gifts ) {
+                if ( runif(1) < prob_obs_g )
+                    g[ i , j , k ] <- rbern( 1 , inv_logit( alpha[3] + beta[3]*y_true[i,j] ) )
+            }#k
+            
         }
     }#j
 }#i
@@ -198,7 +210,7 @@ datu$group[1] <- groups[1] # fix first individual
 datu$pg_prior <- rep(10,3)
 datu$group
 
-mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=1 , cores=3 , control=list(adapt_delta=0.95) )
+mu <- stan( file="CSBM2u.stan" , data=datu , iter=600 , chains=3 , cores=3 , control=list(adapt_delta=0.95) )
 
 precis(mu,2)
 precis(mu,3,pars="B")
@@ -222,7 +234,7 @@ par(mfrow=c(1,2))
 library(igraph)
 m_graph <- graph_from_adjacency_matrix( y_true , mode="directed" )
 lx <- layout_nicely(m_graph)
-plot(m_graph , vertex.color=groups , vertex.size=8  , main="truth" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , layout=lx )
+plot(m_graph , vertex.color=groups , vertex.size=8  , main="truth" , edge.arrow.size=0.55 , edge.curved=0.35 , edge.color=gray(0.5,0.5) , asp=0.9 , margin = -0.05 , layout=lx , vertex.label=NA )
 
 # plot posterior inferred network
 post <- extract.samples(mu)

@@ -4,15 +4,18 @@ functions{
     // (1) s[i,j,1]: i's report of i->j
     // (2) s[j,i,2]: j's report of i->j
     // (3) g[i,j,]: i's gifts i->j
-    real prob_sgij( int sij1, int sji2, int[] gij, int tie, vector alpha, vector beta ) {
+    real prob_sgij( int sij1, int sji2, int[] gij, int tie, vector alpha, vector beta , real theta ) {
         real y;
         y = 
             // prob i says helps j
             bernoulli_lpmf( sij1 | inv_logit( alpha[1] + beta[1]*tie ) ) + 
-            // prob i did help j on N_gift occasions
-            bernoulli_lpmf( gij | inv_logit( alpha[3] + beta[3]*tie ) ) + 
             // prob j says i helps j
-            bernoulli_lpmf( sji2 | inv_logit( alpha[2] + beta[2]*tie ) );
+            bernoulli_lpmf( sji2 | inv_logit( (1-sij1)*alpha[2] + beta[2]*tie + sij1*theta ) );
+        for ( k in 1:size(gij) ) {
+            if ( gij[k] > -1 )
+                // prob i did help j on N_gift occasions
+                y = y + bernoulli_lpmf( gij[k] | inv_logit( alpha[3] + beta[3]*tie ) );
+        }//k
         return(y);
     }
 }
@@ -29,6 +32,7 @@ parameters{
     matrix[N_groups,N_groups] B;
     vector[N_x] alpha;
     vector<lower=0>[N_x] beta;
+    real theta;
     // varying effects on individuals
     matrix[ 2 + N_x*2 ,N_id] z_id;
     vector<lower=0>[ 2 + N_x*2 ] sigma_id;
@@ -46,6 +50,7 @@ model{
     
     alpha ~ normal(0,1);
     beta ~ normal(1,1);
+    theta ~ normal(0,0.5);
 
     to_vector(z_id) ~ normal(0,1);
     sigma_id ~ normal(0,1);
@@ -72,7 +77,7 @@ model{
                 // consider each possible state of true tie and compute prob of data
                 for ( tie in 0:1 ) {
                     terms[tie+1] = 
-                        prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id );
+                        prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id , theta );
                 }
                 pij = inv_logit( B[group[i],group[j]] + v_id[i,1] + v_id[j,2] );
                 target += log_mix( pij , terms[2] , terms[1] );
@@ -99,11 +104,11 @@ generated quantities{
                 tie = 0;
                 terms[1] = 
                     log1m_inv_logit( pij_logit ) + 
-                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id );
+                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id , theta );
                 tie = 1;
                 terms[2] = 
                     log_inv_logit( pij_logit ) + 
-                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id );
+                    prob_sgij( s[i,j,1] , s[j,i,2] , g[i,j,] , tie , alpha_id , beta_id , theta );
                 p_tie_out[i,j] = exp(
                         terms[2] - log_sum_exp( terms )
                     );

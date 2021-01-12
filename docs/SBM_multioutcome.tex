@@ -106,7 +106,7 @@ However this structure is arbitrary and can be made a function of parameters and
 
 The true ties $y_{ij}$ generate observable variables $x_{ijvt}$, where $v$ is an index for the specific type of observable variable and $t$ is the time point. These $x$ variables can have any arbitrary distribution and relation to the ties $y_{ij}$. We consider as an example two types.
 \begin{enumerate}
-\item Survey data for which each $i$ nominates a set of alters $j$ who have either provided aid to $i$ or been given aid by $i$. Such data may be unreliable, and the reliability may vary by the direction, $i \rightarrow j$ versus $i \leftarrow j$. Note that $i$'s report of $j$'s aid may disagree with $j$'s report of the same relationship.
+\item Survey data for which each $i$ nominates a set of alters $j$ who have either provided aid to $i$ or been given aid by $i$. Such data may be unreliable, and the reliability may vary by the direction, $i \rightarrow j$ versus $i \leftarrow j$. Note that $i$\,'s report of $j$\,'s aid may disagree with $j$\,'s report of the same relationship.
 \item Behavioral data on directed exchanges $i \rightarrow j$, such as gifts or shares of a resource. These data may be more reliable, but resource constraints may also make it impossible to share with all ties.
 \end{enumerate}
 For binary data, the model assumes:
@@ -145,7 +145,11 @@ where $g_i$ is a parameter that measures $i$'s tendency to form ties and $r_j$ m
 \end{align*}
 where $G_{iv}$ is the tendency of $i$ to perform the behavior in general, $R_{jv}$ is $j$'s tendency to receive the behavior, both independent of the network. How can these effects be interpreted? Suppose for example the behavior is reporting help, and there is a node who reports helping everyone. In that case, $G_{iv}$ would be large. It would similarly be possible to specify individual effects on $\beta_{v}$.
 
+One difficulty is that an observed $x$ variable can depend upon the target $j$ rather than the focal $i$. This arises for example when $j$ reports when $i$ helped $j$. In this case the offsets inside $p_{ijv}$ should come from $j$ instead of $i$. We implement this by assigning each $x$ variable a ``reporter'' code to indicate whether it depends upon features of $i$ or rather $j$.
+
 We model the individual effects as standard partially pooled parameters. For example, if there are three $x$ variables, then there are 8 parameters unique to each node. This defines an 8-by-8 covariance matrix. We set priors independently on the scale parameters and correlation matrix.
+
+
 
 \section{Computation}
 
@@ -164,18 +168,18 @@ from Bayes rule. This can be calculated using MCMC samples of the parameters $\T
 
 The same approach works for the block assignments $b_i$ and $b_j$. In that case, there are more terms to sum over in the mixture. For example if there are 3 blocks and neither $b_i$ nor $b_j$ are observed, then there will be 6 terms in the mixture probability $\Pr(x_{ij}|\Theta)$:
 \begin{align*}
-	\Pr(x_{ij}|\Theta) &= \sum_T \sum_m \sum_n \Pr(b_i=m) \Pr(b_j=n) \\
-	& \quad \times \Pr(y_{ij}=T|b_i=m,b_j=n)   \Pr(x_{ij}|y_{ij}=T,b_i=m,b_j=n)
+	\Pr(x_{ij}|\Theta) &=  \sum_m \sum_n \Pr(b_i=m) \Pr(b_j=n) \\
+	& \quad \times \sum_T \Pr(y_{ij}=T|b_i=m,b_j=n)   \Pr(x_{ij}|y_{ij}=T,b_i=m,b_j=n)
 \end{align*}
 omitting the $\Theta$ notation in the above for brevity. 
 
 Again we recover posterior distributions for $b_i$ by inverting the probabilities post sampling. Note however that computing the posterior probability of each node's $b_i$ requires considering all $j$ alters at once. Otherwise the model implies that $i$ has different block membership for each $j$.
 \begin{align*}
-	\Pr(b_i=m|x_{ij}) = \frac{ \Pr(b_i=m) \prod_j \Pr(x_{ij}|b_i=m) }{ \sum_n \Pr(b_i=n) \prod_j \Pr(x_{ij}|b_i=n) }
+	\Pr(b_i=m|x_{i}) = \frac{ \Pr(b_i=m) \prod_j \Pr(x_{ij}|b_i=m) }{ \sum_n \Pr(b_i=n) \prod_j \Pr(x_{ij}|b_i=n) }
 \end{align*}
-where $\Pr(x_{ij}|b_i)$ marginalizes over $y_{ij}$ and $b_j$.
+where $\Pr(x_{ij}|b_i)$ marginalizes over $y_{ij}$ and $b_j$ (when $b_j$ is also not observed).
 
-Our Stan code marks the sections corresponding to each of these calculations.
+Our Stan code marks the sections corresponding to each of these calculations, inside the generated quantities block. 
 
 \section{Validating the model}
 
